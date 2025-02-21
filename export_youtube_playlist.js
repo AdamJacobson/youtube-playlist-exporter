@@ -1,30 +1,44 @@
-// Version 0.11
 window.exportPlaylistTitles = {
   run: function () {
     const videos = this.getMainSectionVideos();
 
     let unavailableVideoIndicies = [];
-    if (this.lastRunVideos.length > 0) {
-      unavailableVideoIndicies = this.compareVideosWithPreviousRun(videos);
-    }
-
-    this.lastRunVideos = Array.from(videos).map(video => video.innerText)
-
     const numHidden = this.numberOfHiddenVideos();
     if (numHidden > 0) {
+      this.lastRunVideos = Array.from(videos).map(video => video.innerText)
+
       console.log(`%c${numHidden} videos are hidden. Click the "Show unavailable videos" button to run this again.`, "color:red")
-      this.waitForReload();
+      this.setupWaitForReload();
       return;
+    } else {
+      if (this.lastRunVideos.length > 0) {
+        unavailableVideoIndicies = this.compareVideosWithPreviousRun(videos);
+      }
     }
 
     const message = [];
-    message.push(this.documentHeader(videos.length, unavailableVideoIndicies.length));
+    const header = this.documentHeader(videos.length, unavailableVideoIndicies.length);
+    const filename = this.filename(videos.length, unavailableVideoIndicies.length);
+    message.push(header);
 
     message.push(this.documentKey());
     videos.forEach((videoOrSection, index) => {
       message.push(this.videoOrSectionEntry(videoOrSection, index, unavailableVideoIndicies));
     });
-    console.log(message.join("\n"));
+    this.export(filename, message.join("\n"));
+  },
+
+  export: function (filename, contents) {
+    const element = document.createElement('a');
+    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(contents));
+    element.setAttribute('download', filename);
+
+    element.style.display = 'none';
+    document.body.appendChild(element);
+
+    element.click();
+
+    document.body.removeChild(element);
   },
 
   getMainSectionVideos: function () {
@@ -42,7 +56,7 @@ window.exportPlaylistTitles = {
 
   interval: null,
 
-  waitForReload: function () {
+  setupWaitForReload: function () {
     this.interval = setInterval(() => {
       const alert = document.querySelector("div#alerts yt-formatted-string");
       if (alert.innerText === "Unavailable videos will be hidden during playback") {
@@ -54,6 +68,7 @@ window.exportPlaylistTitles = {
 
   lastRunVideos: [],
 
+  // Given the current list of videos, compare with the previous run and determine which ones are unavailable
   compareVideosWithPreviousRun: function (currentVideos) {
     const previousVideos = this.lastRunVideos;
     const unavailableVideoIndicies = [];
@@ -94,6 +109,20 @@ window.exportPlaylistTitles = {
     const pageUrl = document.location.href;
 
     let header = `[${pageTitle}](${pageUrl}) as of ${this.timestamp()} (${numVideos} videos`
+
+    if (numUnavailableVideos > 0) {
+      header += `, ${numUnavailableVideos} unavailable)`;
+    } else {
+      header += ')';
+    }
+
+    return header;
+  },
+
+  filename: function (numVideos, numUnavailableVideos) {
+    const pageTitle = document.title.replace(" - YouTube", "");
+
+    let header = `${pageTitle} as of ${this.timestamp()} (${numVideos} videos`
 
     if (numUnavailableVideos > 0) {
       header += `, ${numUnavailableVideos} unavailable)`;
