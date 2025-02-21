@@ -8,6 +8,10 @@ Currently, it must be copy pasted into your browser console in order to run.
 
 # Version History
 
+### 0.11
+- Encapsulate function into a dedicated object.
+- Will now detect when there are unavailable videos and prompt user to unhide them. It will then run again automatically and compares the differences which includes videos that are unavailable but don't appear as "[Deleted video]" or "[Private video]".
+
 ### 0.10
 - Add count of videos to output; Ignore recommended section of playlists.
 
