@@ -1,23 +1,40 @@
-// Version 0.9
-// Added checkboxes for copy/pasting into dropbox paper
-
+// Version 0.10
 window.exportPlaylistTitles = function () {
-  const videosAndSections = document.querySelectorAll("div#contents div#meta, div#title.ytd-item-section-header-renderer");
-  const header = doumentHeader(); // Will be overwritten on document.open();
+  const message = []
 
-  message = header + "\n";
-  message += documentKey() + "\n";
-  videosAndSections.forEach((videoOrSection, index) => {
-    message += videoOrSectionEntry(videoOrSection, index) + "\n";
+  // Only get videos that aren't in the "Recommended" section
+  const videosAndSections = document.querySelectorAll("div#contents div#meta, div#title.ytd-item-section-header-renderer");
+  const videos = [];
+  for (const [_, videoOrSection] of Object.entries(videosAndSections)) {
+    if (videoOrSection.id === 'title') {
+      break;
+    }
+    videos.push(videoOrSection);
+  }
+
+  const header = doumentHeader(videos.length); // Will be overwritten on document.open();
+  message.push(header);
+
+  const alert = document.querySelector("div#alerts yt-formatted-string");
+  if (alert !== null) {
+    const match = alert.innerText.match(/(?<num>\d*) unavailable videos are hidden/);
+    if (match) {
+      message.push(`${match.groups.num} videos are hidden.`);
+    }
+  }
+
+  message.push(documentKey());
+  videos.forEach((videoOrSection, index) => {
+    message.push(videoOrSectionEntry(videoOrSection, index));
   });
-  console.log(message);
+  console.log(message.join("\n"));
 }
 
-const doumentHeader = function () {
+const doumentHeader = function (numVideos) {
   const pageTitle = document.title.replace(" - YouTube", "");
   const pageUrl = document.location.href;
 
-  return `[${pageTitle}](${pageUrl}) as of ${timestamp()}`
+  return `[${pageTitle}](${pageUrl}) as of ${timestamp()} (${numVideos} videos)`
 }
 
 const documentKey = function () {
