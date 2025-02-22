@@ -1,11 +1,12 @@
 window.exportPlaylistTitles = {
   run: function () {
-    const videos = this.getMainSectionVideos();
+    const videos = this.videosAsJSON();
 
     let unavailableVideoIndicies = [];
     const numHidden = this.numberOfHiddenVideos();
+    window.currentVideos = videos;
     if (numHidden > 0) {
-      this.lastRunVideos = Array.from(videos).map(video => video.innerText)
+      this.lastRunVideos = videos
 
       console.log(`%c${numHidden} videos are hidden. Click the "Show unavailable videos" button to run this again.`, "color:red")
       this.setupWaitForReload();
@@ -16,42 +17,107 @@ window.exportPlaylistTitles = {
       }
     }
 
-    const message = [];
+    const filename = this.filename(videos.length, unavailableVideoIndicies.length);
+
+    this.download(JSON.stringify(videos), filename, 'text/javascript');
+
+    this.exportFormattedVideoData(videos, unavailableVideoIndicies);
+  },
+
+  exportFormattedVideoData: function (videos, unavailableVideoIndicies) {
+    const fileContents = [];
     const header = this.documentHeader(videos.length, unavailableVideoIndicies.length);
     const filename = this.filename(videos.length, unavailableVideoIndicies.length);
-    message.push(header);
 
-    message.push(this.documentKey());
-    videos.forEach((videoOrSection, index) => {
-      message.push(this.videoOrSectionEntry(videoOrSection, index, unavailableVideoIndicies));
+    fileContents.push(header);
+    fileContents.push(this.documentKey());
+
+    videos.forEach((video, index) => {
+      const available = !!video["available"];
+      const availability = available ? '' : 'UNAVAILABLE ';
+      let channelLink;
+
+      if (!!video["channelUrl"]) {
+        channelLink = `[${video["channelTitle"]}](${video["channelUrl"]})`;
+      } else {
+        channelLink = video["channelTitle"];
+      }
+
+      let line = `${index + 1}: ${availability}[${video["videoTitle"]}](${video["videoUrl"]}) | ${channelLink}`;
+      if (available) {
+        line = `- [] **${line}**`;
+      }
+
+      if (!available) {
+        fileContents.push("");
+      }
+
+      fileContents.push(line);
     });
-    this.export(filename, message.join("\n"));
+
+    this.download(fileContents.join("\n"), filename, 'text/plain');
   },
 
-  export: function (filename, contents) {
-    const element = document.createElement('a');
-    element.setAttribute('href', 'data:text/plain;charset=utf-8,' + encodeURIComponent(contents));
-    element.setAttribute('download', filename);
-
-    element.style.display = 'none';
-    document.body.appendChild(element);
-
-    element.click();
-
-    document.body.removeChild(element);
+  // Source: https://stackoverflow.com/questions/47942244/print-javascript-object-to-txt-file
+  download: function (data, filename, type) {
+    const file = new Blob([data], { type: type });
+    if (window.navigator.msSaveOrOpenBlob) // IE10+
+      window.navigator.msSaveOrOpenBlob(file, filename);
+    else { // Others
+      const a = document.createElement("a");
+      const url = URL.createObjectURL(file);
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(function () {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(url);
+      }, 0);
+    }
   },
 
-  getMainSectionVideos: function () {
+  videosAsJSON: function () {
+    const videos = [];
     const videosAndSections = document.querySelectorAll("div#contents div#meta, div#title.ytd-item-section-header-renderer");
-    const mainSectionVideos = [];
+
     for (const [_, videoOrSection] of Object.entries(videosAndSections)) {
       if (videoOrSection.id === 'title') {
         break;
       }
-      mainSectionVideos.push(videoOrSection);
+      videos.push(this.videoData(videoOrSection));
     }
 
-    return mainSectionVideos;
+    return videos;
+  },
+
+  videoData: function (video) {
+    const videoTitle = video.querySelector("#video-title").title;
+    const videoUrl = video.querySelector("#video-title").href.split("&")[0];
+    const channelLink = video.querySelector("#channel-name yt-formatted-string#text a");
+
+    let channelTitle = null;
+    let channelUrl = null;
+    let available = false;
+
+    if (channelLink) {
+      channelTitle = video.querySelector("#channel-name a").text;
+      channelUrl = video.querySelector("#channel-name a").href;
+      available = true;
+    } else {
+      const hiddenChannelTitle = video.querySelector("#channel-name yt-formatted-string#text");
+      channelTitle = hiddenChannelTitle.title;
+    }
+
+    const data = {
+      videoTitle: videoTitle,
+      videoUrl: videoUrl,
+      channelTitle: channelTitle,
+      channelUrl: channelUrl,
+      available: available,
+    }
+
+    return data;
   },
 
   interval: null,
@@ -79,12 +145,14 @@ window.exportPlaylistTitles = {
 
     while (index1 < endIndex && index2 < endIndex) {
       const v1 = previousVideos[index1];
-      const v2 = currentVideos[index2].innerText;
+      const v2 = currentVideos[index2];
 
-      if (v1 !== v2) {
+      if (v1["videoUrl"] !== v2["videoUrl"]) {
+        v2["available"] = false;
         unavailableVideoIndicies.push(index2);
         index2++;
       } else {
+        v2["available"] = true;
         index1++;
         index2++;
       }
@@ -134,55 +202,11 @@ window.exportPlaylistTitles = {
   },
 
   documentKey: function () {
-    return "<ul><li><strong>Bolded entries have not yet been downloaded</strong></li><li>A checkbox indicates it has been downloaded and imported to the library.</li></ul><br/><br/>"
-  },
-
-  // I don't think I need to check for title sections anymore...
-  videoOrSectionEntry: function (element, index, unavailableVideoIndicies) {
-    if (element.id === 'title') {
-      return this.sectionTitle(element)
-    } else {
-      return this.videoEntry(element, index, unavailableVideoIndicies)
-    }
-  },
-
-  sectionTitle: function (element) {
-    return `<h3>${element.innerHTML}</h3>`
-  },
-
-  videoEntry: function (video, index, unavailableVideoIndicies) {
-    const title = video.querySelector("#video-title").title;
-    const videoUrl = video.querySelector("#video-title").href.split("&")[0]; // Ignore any params except the first which is the video ID
-    const channelElement = video.querySelector("#channel-name a");
-    let channel = null;
-    let channelUrl = null;
-    if (channelElement) {
-      channel = video.querySelector("#channel-name a").text;
-      channelUrl = video.querySelector("#channel-name a").href;
-    }
-
-    let entry = "";
-    let bold = false;
-    let extraNewLine = "";
-    if (title == "[Deleted video]" || title == "[Private video]" || unavailableVideoIndicies.includes(index)) {
-      extraNewLine = "\n";
-      entry = `UNAVAILABLE [${title}](${videoUrl})`
-      if (channelElement) {
-        entry += ` | [${channel}](${channelUrl})`;
-      }
-    } else {
-      bold = true
-
-      entry = `[${title}](${videoUrl}) | [${channel}](${channelUrl})`;
-    }
-
-    const row = `${index + 1}: ${entry}`;
-
-    if (bold) {
-      return `- [] **${row}**`;
-    }
-
-    return extraNewLine + row;
+    return [
+      "- **Bolded entries have not yet been downloaded**",
+      "- A checkbox indicates it has been downloaded and imported to the library.",
+      "# Videos",
+    ].join("\n")
   },
 
   timestamp: function () {
@@ -193,4 +217,4 @@ window.exportPlaylistTitles = {
   },
 }
 
-window.exportPlaylistTitles.run()
+window.exportPlaylistTitles.run();

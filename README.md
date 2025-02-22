@@ -8,6 +8,13 @@ Currently, it must be copy pasted into your browser console in order to run.
 
 # Version History
 
+### 0.13
+- Data is now stored in JSON format to allow for easier formatting. Formatting happens on export.
+- 2 files are now downloaded:
+  1. The JSON object file
+  2. The markdown formatted file
+- Now shows the channel name even for unavailable videos (but won't have a link to the channel)
+
 ### 0.12
 - Results are now downloaded as a text file.
 
